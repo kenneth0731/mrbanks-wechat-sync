@@ -4,6 +4,14 @@ on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "once=检查频道；test-wechat=只发一条测试"
+        type: choice
+        options:
+          - once
+          - test-wechat
+        default: once
 
 concurrency:
   group: mrbanks-sync
@@ -20,18 +28,27 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Restore seen-message state
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode != 'test-wechat'
         run: |
           if git ls-remote --exit-code origin refs/heads/ci-state >/dev/null; then
             git fetch origin ci-state --depth=1
             git show origin/ci-state:.state.json > .state.json
           fi
 
+      - name: Send WeChat test
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'test-wechat'
+        env:
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: python3 sync.py --test-wechat --source GitHub --config config.example.json
+
       - name: Check channel and push matches
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode != 'test-wechat'
         env:
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
         run: python3 sync.py --once --config config.example.json
 
       - name: Save seen-message state
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode != 'test-wechat'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

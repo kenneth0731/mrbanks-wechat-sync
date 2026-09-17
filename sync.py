@@ -229,6 +229,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="只打印不推送")
     parser.add_argument("--reset", action="store_true", help="清空已见记录")
     parser.add_argument("--test-wechat", action="store_true", help="发送一条微信测试")
+    parser.add_argument("--source", default="", help="测试消息上来源，便于区分本机和云端")
     args = parser.parse_args()
 
     if args.config.exists():
@@ -243,10 +244,12 @@ def main() -> None:
         print("状态已重置。")
 
     if args.test_wechat:
-        title = "Mr Banks 同步 · 测试"
-        message = f"[{datetime.now(tz=TZ).strftime('%H:%M:%S')}] 微信通道正常。"
+        source = (args.source or "本机").strip()
+        title = f"Mr Banks 同步 · {source}"
+        now = datetime.now(tz=TZ).strftime("%Y-%m-%d %H:%M:%S")
+        message = f"[{now}] {source}通道正常，这条是测试推送。"
         send_wechat(resolve_token(config), title, message)
-        print("测试消息已发送。")
+        print(f"测试消息已发送：{title}")
         return
 
     if args.once or args.dry_run:
