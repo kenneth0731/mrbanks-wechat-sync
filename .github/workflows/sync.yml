@@ -1,0 +1,57 @@
+name: Sync Mr Banks to WeChat
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: mrbanks-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore seen-message state
+        run: |
+          if git ls-remote --exit-code origin refs/heads/ci-state >/dev/null; then
+            git fetch origin ci-state --depth=1
+            git show origin/ci-state:.state.json > .state.json
+          fi
+
+      - name: Check channel and push matches
+        env:
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: python3 sync.py --once --config config.example.json
+
+      - name: Save seen-message state
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -f .state.json
+          work=/tmp/ci-state
+          rm -rf "$work"
+          git fetch origin ci-state --depth=1 || true
+          if git show-ref --verify --quiet refs/remotes/origin/ci-state; then
+            git worktree add "$work" origin/ci-state
+          else
+            git worktree add --detach "$work"
+            git -C "$work" checkout --orphan ci-state
+            git -C "$work" rm -rf --ignore-unmatch .
+          fi
+          cp .state.json "$work/.state.json"
+          git -C "$work" add .state.json
+          if git -C "$work" diff --cached --quiet; then
+            echo "state unchanged"
+            exit 0
+          fi
+          git -C "$work" -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "chore: update seen message ids"
+          git -C "$work" push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:ci-state
