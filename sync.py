@@ -172,6 +172,10 @@ def run_once(
     state = load_json(state_path) if state_path.exists() else {"seen_ids": []}
     seen = set(state.get("seen_ids") or [])
     fresh = [item for item in items if item["id"] not in seen]
+    print(
+        f"[{datetime.now(tz=TZ).strftime('%H:%M:%S')}] "
+        f"匹配 {len(items)} 条，未见过 {len(fresh)} 条"
+    )
 
     if bootstrap and not state.get("initialized"):
         for item in items:
