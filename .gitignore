@@ -3,3 +3,11 @@ config.json
 *.pyc
 __pycache__/
 .secrets/
+
+# 任务 B：Stake 本地密钥与快照（勿提交）
+stake-alert/config.json
+stake-alert/odds_snapshots/
+stake-alert/.env
+stake-alert/.venv/
+stake-alert/.state.json
+
