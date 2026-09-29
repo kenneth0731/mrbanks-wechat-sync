@@ -55,4 +55,4 @@ python3 sync.py --test-wechat      # 测微信
 # 任务 B：Stake 指数异动 & 推荐单
 
 见 [`stake-alert/README.md`](./stake-alert/README.md)。  
-在 Mac 上执行一次 `./stake-alert/import-from-mac.sh`，把 `~/Projects/stake-alert` 的实现导入本目录后再跑定时任务。
+源码已从 Mac 导入；在本机 `stake-alert/` 配置 `config.json` 后即可 `./install-odds-tracker.sh`。

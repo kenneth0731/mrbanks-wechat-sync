@@ -10,20 +10,12 @@
 
 定时：本机 `launchd` 每天 **11:00 / 16:30 / 21:00 / 23:30** 跑 `odds_tracker.py`。
 
-## 源码从哪来
+## 源码
 
-实现原先在 Mac：`~/Projects/stake-alert`。  
-曾声称推到私有仓 `kenneth0731/Stake`，当前账号下**不可见 / 已失效**。  
-云端 Agent 读不到 Mac 磁盘，因此 `.py` 需在本机导入一次：
+已从 Mac `~/Projects/stake-alert` 导入（见 `SOURCE.md`）。  
+若本机还有更新，可再跑：`./stake-alert/import-from-mac.sh`。
 
-```bash
-# 在 Mac 上、本仓库根目录执行
-./stake-alert/import-from-mac.sh
-```
-
-导入后应出现：`stake.py`、`odds_tracker.py`、`pick_verify.py`、`config.example.json`、plist 与安装脚本。
-
-## 本机命令（导入后）
+## 本机命令
 
 ```bash
 cd stake-alert
