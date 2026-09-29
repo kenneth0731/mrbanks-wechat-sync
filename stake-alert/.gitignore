@@ -1,0 +1,8 @@
+.venv/
+.state.json
+__pycache__/
+monitor.log
+monitor.error.log
+.env
+config.json
+odds_snapshots/

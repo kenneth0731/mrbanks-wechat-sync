@@ -1,0 +1,25 @@
+{
+  "api_token": "",
+  "base_url": "https://stake.com",
+  "proxy": "",
+  "transport": "auto",
+  "poll_interval_seconds": 30,
+  "page_size": 20,
+  "watch_own_bets": true,
+  "watch_highrollers": false,
+  "highroller_limit": 20,
+  "odds_tracker": {
+    "hours": 48,
+    "max_fixtures": 20,
+    "verify_picks": true
+  },
+  "notify": {
+    "macos": true,
+    "sound": true,
+    "pushplus_token": "",
+    "wecom_webhook": "",
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
+    "bark_url": ""
+  }
+}

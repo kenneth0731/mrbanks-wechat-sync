@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.stake.odds-tracker</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/caozhongyuan/Projects/mrbanks-wechat-sync/stake-alert</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/caozhongyuan/Projects/mrbanks-wechat-sync/stake-alert/odds_tracker.py</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Hour</key>
+      <integer>11</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>23</integer>
+      <key>Minute</key>
+      <integer>30</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>16</integer>
+      <key>Minute</key>
+      <integer>30</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>21</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+  </array>
+  <key>StandardOutPath</key>
+  <string>/Users/caozhongyuan/Projects/mrbanks-wechat-sync/stake-alert/odds_snapshots/tracker.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/caozhongyuan/Projects/mrbanks-wechat-sync/stake-alert/odds_snapshots/tracker.error.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
