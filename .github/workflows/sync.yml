@@ -1,4 +1,4 @@
-name: Sync Mr Banks to WeChat
+name: 微信提醒 · Sync Mr Banks to WeChat
 
 on:
   schedule:
