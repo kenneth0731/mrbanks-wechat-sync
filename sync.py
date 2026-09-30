@@ -60,10 +60,38 @@ def html_to_text(raw: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", raw).strip()
 
 
-def fetch(url: str, timeout: int = 20) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="replace")
+RETRYABLE_HTTP = {408, 425, 429, 500, 502, 503, 504}
+
+
+def fetch(url: str, timeout: int = 30, *, attempts: int = 5) -> str:
+    """拉取页面；对 Telegram 偶发超时 / 502/503 等做有限次重试。"""
+    last_error: BaseException | None = None
+    for attempt in range(1, attempts + 1):
+        req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            if exc.code not in RETRYABLE_HTTP or attempt >= attempts:
+                raise
+            wait = min(2 ** (attempt - 1), 8)
+            print(
+                f"拉取失败 HTTP {exc.code}，{wait}s 后重试 ({attempt}/{attempts})",
+                file=sys.stderr,
+            )
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+            if attempt >= attempts:
+                raise
+            wait = min(2 ** (attempt - 1), 8)
+            print(
+                f"拉取失败 {exc}，{wait}s 后重试 ({attempt}/{attempts})",
+                file=sys.stderr,
+            )
+        time.sleep(wait)
+    assert last_error is not None
+    raise last_error
 
 
 def parse_messages(page_html: str) -> list[dict[str, str]]:
@@ -257,12 +285,19 @@ def main() -> None:
         return
 
     if args.once or args.dry_run:
-        run_once(
-            config,
-            args.state,
-            bootstrap=not args.dry_run,
-            dry_run=args.dry_run,
-        )
+        try:
+            run_once(
+                config,
+                args.state,
+                bootstrap=not args.dry_run,
+                dry_run=args.dry_run,
+            )
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            # GitHub Actions 每几分钟会再跑；Telegram 短暂超时不应刷失败邮件。
+            if os.environ.get("GITHUB_ACTIONS") == "true" and not args.dry_run:
+                print(f"Telegram 拉取失败（已重试），本轮跳过: {exc}", file=sys.stderr)
+                raise SystemExit(0) from exc
+            raise
         return
 
     watch(args.config, args.state)
