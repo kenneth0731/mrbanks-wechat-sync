@@ -44,6 +44,25 @@ TEAM_EN = {
     "荷兰": "Netherlands",
     "丹麦": "Denmark",
     "奥地利": "Austria",
+    "葡萄牙": "Portugal",
+    "塞尔维亚": "Serbia",
+    "希腊": "Greece",
+    "威尔士": "Wales",
+    "挪威": "Norway",
+    "以色列": "Israel",
+    "科索沃": "Kosovo",
+    "爱尔兰": "Republic of Ireland",
+    "爱尔兰共和国": "Republic of Ireland",
+    "北爱尔兰": "Northern Ireland",
+    "土耳其": "Turkey",
+    "匈牙利": "Hungary",
+    "格鲁吉亚": "Georgia",
+    "乌克兰": "Ukraine",
+    "波兰": "Poland",
+    "罗马尼亚": "Romania",
+    "瑞典": "Sweden",
+    "波黑": "Bosnia and Herzegovina",
+    "波斯尼亚": "Bosnia and Herzegovina",
 }
 
 NEG_NEWS = (
@@ -137,14 +156,19 @@ def index_check(leg: dict[str, Any], history: list[dict[str, Any]]) -> dict[str,
     market = str(leg.get("market") or "")
     home, away = _match_teams(str(leg.get("match") or ""))
     team = str(leg.get("team") or "")
+    # 只看近 36 小时快照，避免跨天漂移把正常波动判成驳回
+    cutoff = (_now() - timedelta(hours=36)).isoformat()
     series: list[tuple[str, float]] = []
     for snap in history:
+        ts = str(snap.get("ts") or "")
+        if ts and ts < cutoff:
+            continue
         for match in snap.get("matches") or []:
             if str(match.get("id") or "") != mid:
                 continue
             quotes = match.get("quotes") or {}
             if market in quotes:
-                series.append((str(snap.get("ts") or "")[:16], float(quotes[market])))
+                series.append((ts[:16], float(quotes[market])))
             break
     note = "快照里还没有这条盘口的历史"
     verdict = "存疑"
@@ -307,10 +331,30 @@ def fetch_news(query: str) -> list[dict[str, str]]:
     return items
 
 
+def _news_competition(leg: dict[str, Any]) -> str:
+    tour = str(leg.get("tournament") or "")
+    keys = (
+        ("欧国联", "Nations League"),
+        ("国家联赛", "Nations League"),
+        ("Nations League", "Nations League"),
+        ("冠军联赛", "Champions League"),
+        ("欧洲联赛", "Europa League"),
+        ("英超", "Premier League"),
+        ("西甲", "La Liga"),
+        ("德甲", "Bundesliga"),
+        ("意甲", "Serie A"),
+        ("法甲", "Ligue 1"),
+    )
+    for needle, label in keys:
+        if needle in tour:
+            return label
+    return "football"
+
+
 def news_check(leg: dict[str, Any]) -> dict[str, Any]:
     home, away = _match_teams(str(leg.get("match") or ""))
     team = str(leg.get("team") or "")
-    query = f"{_team_en(home)} vs {_team_en(away)} Nations League"
+    query = f"{_team_en(home)} vs {_team_en(away)} {_news_competition(leg)}"
     headlines = fetch_news(query)
     if not headlines:
         cached = _cache_get(str(leg.get("match") or query))
@@ -319,7 +363,8 @@ def news_check(leg: dict[str, Any]) -> dict[str, Any]:
         return {"verdict": "存疑", "note": "未取到近况新闻", "headlines": []}
     blob = " ".join(h["title"].lower() for h in headlines)
     team_en = _team_en(team).lower()
-    neg = sum(1 for w in NEG_NEWS if w in blob and (team_en in blob or not team_en))
+    # 负面词必须同时命中所选队名，避免把对面伤停算到本队头上
+    neg = sum(1 for w in NEG_NEWS if w in blob and team_en and team_en in blob)
     pos = sum(1 for w in POS_NEWS if w in blob)
     titles = "；".join(h["title"][:48] for h in headlines[:2])
     if neg >= 3 and pos == 0:
@@ -373,6 +418,7 @@ def apply_verification(card: dict[str, Any]) -> dict[str, Any]:
     kept: list[dict[str, Any]] = []
     reports: list[dict[str, Any]] = []
     dropped: list[str] = []
+    prior_empty = str(card.get("empty_reason") or "")
     for ticket in card.get("tickets") or []:
         report = verify_ticket(ticket, history)
         ticket["verify"] = report
@@ -391,11 +437,16 @@ def apply_verification(card: dict[str, Any]) -> dict[str, Any]:
         card["options"] = [
             leg["market"] + "@" + leg["match_id"] for t in card["tickets"] for leg in t["legs"]
         ]
+        card.pop("empty_reason", None)
     else:
         card["stake_usd"] = 0
         card["return_usd"] = 0
         card["profit_usd"] = 0
         card["options"] = []
+        if dropped:
+            card["empty_reason"] = "验证未通过，本轮不发单。\n" + "；".join(dropped)
+        elif prior_empty:
+            card["empty_reason"] = prior_empty
     card["verify_reports"] = reports
     card["verify_dropped"] = dropped
     card["verified_at"] = _now().isoformat()

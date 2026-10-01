@@ -39,7 +39,13 @@ TOURNAMENT_KEYS = (
     "欧洲冠军联赛",
     "欧足联欧洲联赛",
     "Conference",
+    # 欧国联：Stake/不同盘口中文名不一，别名都收
     "欧足协国际联赛",
+    "欧足联国家联赛",
+    "欧足协国家联赛",
+    "欧洲国家联赛",
+    "欧国联",
+    "Nations League",
     "英格兰联赛杯",
     "足总杯",
     "德国杯",
@@ -74,7 +80,7 @@ MARKET_BANDS = {
 QUERY_TOURNAMENTS = """
 query($id: String!) {
   sport(sportId: $id) {
-    tournamentList(limit: 50) {
+    tournamentList(limit: 200) {
       id
       name
       fixtureCount
@@ -831,12 +837,54 @@ def scale_to_daily_cap(tickets: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return tickets
 
 
+def diagnose_empty_picks(matches: list[dict[str, Any]], now: datetime) -> str:
+    total = len(matches)
+    skipped = 0
+    outside = 0
+    no_quotes = 0
+    no_band = 0
+    ok = 0
+    until = now + timedelta(hours=PICKS_HORIZON_HOURS)
+    for match in matches:
+        if skip_match(str(match.get("name") or "")):
+            skipped += 1
+            continue
+        start = parse_start(match.get("start"))
+        if not start or start < now - timedelta(minutes=20) or start > until:
+            outside += 1
+            continue
+        quotes = match.get("quotes") or {}
+        if not quotes:
+            no_quotes += 1
+            continue
+        if not iter_selections(match):
+            no_band += 1
+            continue
+        ok += 1
+    if total == 0:
+        return (
+            "本轮未组出推荐单：快照里没有关注赛事场次"
+            "（请确认欧国联/五大联赛等已进 tournament 列表）。"
+        )
+    if ok < 2:
+        return (
+            f"本轮未组出推荐单：可串场次不足（候选{ok}场，需至少2场）。"
+            f"快照{total}场：窗口外{outside}，跳过弱队{skipped}，无盘口{no_quotes}，"
+            f"赔率不在带内{no_band}。"
+        )
+    return (
+        f"本轮未组出推荐单：有{ok}场候选，但凑不出组合赔率≥{MIN_TICKET_ODDS:.2f}的串"
+        f"（快照{total}场）。"
+    )
+
+
 def build_picks(snap: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(tz=TZ)
-    tickets = build_daily_parlays(snap.get("matches") or [], now)
+    matches = snap.get("matches") or []
+    tickets = build_daily_parlays(matches, now)
     stake = round(sum(float(t["stake_usd"]) for t in tickets), 2)
     ret = sum(t["return_usd"] for t in tickets)
-    return {
+    card: dict[str, Any] = {
         "ts": now.isoformat(),
         "slot": snap.get("slot") or slot_name(now),
         "tickets": tickets,
@@ -845,6 +893,9 @@ def build_picks(snap: dict[str, Any], now: datetime | None = None) -> dict[str, 
         "profit_usd": round(ret - stake, 2),
         "options": [leg["market"] + "@" + leg["match_id"] for t in tickets for leg in t["legs"]],
     }
+    if not tickets:
+        card["empty_reason"] = diagnose_empty_picks(matches, now)
+    return card
 
 
 def format_leg(index: int, leg: dict[str, Any]) -> str:
@@ -883,10 +934,25 @@ def format_ticket(index: int, ticket: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip()
 
 
+def empty_picks_reason(card: dict[str, Any]) -> str:
+    """区分：验证驳回 vs 根本没组出票（避免误报「指数或新闻冲突」）。"""
+    dropped = [str(x).strip() for x in (card.get("verify_dropped") or []) if str(x).strip()]
+    if dropped:
+        return "验证未通过，本轮不发单。\n" + "；".join(dropped)
+    detail = str(card.get("empty_reason") or "").strip()
+    if detail:
+        return detail
+    return (
+        f"本轮未组出推荐单：未来{PICKS_HORIZON_HOURS}小时内，"
+        f"没有组合赔率不低于{MIN_TICKET_ODDS:.2f}的可执行串"
+        "（常见原因：关注赛事未进快照、盘口不在赔率带、或可串场次不足2场）。"
+    )
+
+
 def format_picks(card: dict[str, Any], title: str) -> str:
     tickets = card.get("tickets") or []
     if not tickets:
-        return f"{title}\n未来{PICKS_HORIZON_HOURS}小时没有组合赔率不低于{MIN_TICKET_ODDS:.2f}的可执行串。"
+        return f"{title}\n{empty_picks_reason(card)}"
     roi = (
         round((card["return_usd"] / card["stake_usd"] - 1) * 100, 1)
         if card.get("stake_usd")
@@ -979,9 +1045,11 @@ def notify_picks(config: dict[str, Any], snap: dict[str, Any], force: bool = Fal
     slot = snap.get("slot") or ""
     now = datetime.now(tz=TZ)
     card = build_picks(snap, now)
-    from pick_verify import apply_verification
+    verify_enabled = bool((config.get("odds_tracker") or {}).get("verify_picks", True))
+    if verify_enabled and (card.get("tickets") or []):
+        from pick_verify import apply_verification
 
-    card = apply_verification(card)
+        card = apply_verification(card)
     prev_path = SNAP_DIR / "latest_picks.json"
     prev = load_json(prev_path) if prev_path.exists() else {}
 
@@ -1014,14 +1082,18 @@ def notify_picks(config: dict[str, Any], snap: dict[str, Any], force: bool = Fal
                 if (start := parse_start(m.get("start"))) and now < start <= early_cutoff
             ],
         }
-        card = apply_verification(build_picks(early_snap, now))
+        card = build_picks(early_snap, now)
+        if verify_enabled and (card.get("tickets") or []):
+            from pick_verify import apply_verification
+
+            card = apply_verification(card)
         send = True
         title = "Stake 早场推荐 · 欧早"
         body = format_picks(card, title)
 
+    # 空票时统一走 empty_picks_reason：有驳回才说验证未通过，否则说明组单失败原因
     if send and not (card.get("tickets") or []):
-        dropped = "；".join(card.get("verify_dropped") or []) or "指数或新闻与选项冲突"
-        body = f"{title}\n验证未通过，本轮不发单。\n{dropped}"
+        body = f"{title}\n{empty_picks_reason(card)}"
 
     if send or force or slot in {"晚盘", "临场"}:
         write_picks(card)
