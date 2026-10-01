@@ -10,7 +10,7 @@
   "highroller_limit": 20,
   "odds_tracker": {
     "hours": 48,
-    "max_fixtures": 20,
+    "max_fixtures": 40,
     "verify_picks": true
   },
   "notify": {
