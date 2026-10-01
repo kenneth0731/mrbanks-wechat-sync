@@ -56,6 +56,7 @@ TOURNAMENT_KEYS = (
 )
 
 EXCLUDE_KEYS = ("女子", "女足", "乙级", "丙级", "冠军联赛，", "英格兰冠军")
+NATIONS_LEAGUE_HINTS = ("国联", "Nations League", "Nation League", "UEFA Nations")
 
 WATCH_MARKETS = (
     "1x2 (1up)",
@@ -72,10 +73,10 @@ MAX_TICKETS = 3
 MIN_TICKET_ODDS = 1.70
 PICKS_HORIZON_HOURS = 24
 MARKET_BANDS = {
-    "1x2(1up)": (1.15, 1.45),
-    "赢任何半场": (1.18, 1.48),
-    "平局返还": (1.20, 1.50),
-    "双胜彩": (1.20, 1.48),
+    "1x2(1up)": (1.12, 1.50),
+    "赢任何半场": (1.15, 1.55),
+    "平局返还": (1.18, 1.55),
+    "双胜彩": (1.15, 1.55),
 }
 QUERY_TOURNAMENTS = """
 query($id: String!) {
@@ -153,7 +154,10 @@ def parse_gmt(value: str | None) -> datetime | None:
 def wanted_tournament(name: str) -> bool:
     if any(bad in name for bad in EXCLUDE_KEYS):
         return False
-    return any(key in name for key in TOURNAMENT_KEYS)
+    if any(key in name for key in TOURNAMENT_KEYS):
+        return True
+    # Stake 欧国联中文名经常变动，用宽匹配兜底
+    return any(hint in name for hint in NATIONS_LEAGUE_HINTS)
 
 
 def gql(query: str, variables: dict[str, Any] | None, token: str) -> dict[str, Any]:
@@ -217,10 +221,12 @@ def collect_fixtures(token: str, hours: int, limit: int) -> list[dict[str, Any]]
     now = datetime.now(timezone.utc)
     until = now + timedelta(hours=hours)
     rows: list[dict[str, Any]] = []
+    matched_names: list[str] = []
     for item in tournaments:
         name = str(item.get("name") or "")
         if not wanted_tournament(name) or not item.get("fixtureCount"):
             continue
+        matched_names.append(name)
         try:
             data = gql(QUERY_FIXTURES, {"id": item["id"]}, token)
         except Exception as exc:  # noqa: BLE001
@@ -240,6 +246,7 @@ def collect_fixtures(token: str, hours: int, limit: int) -> list[dict[str, Any]]
                 }
             )
     rows.sort(key=lambda x: x["start"])
+    print(f"关注联赛 {len(matched_names)} 个：{'；'.join(matched_names[:12]) or '无'}")
     return rows[:limit]
 
 
@@ -789,7 +796,8 @@ def finalize_parlays(bundles: list[list[dict[str, Any]]]) -> list[dict[str, Any]
         kind = {1: "单关", 2: "二串一", 3: "三串一"}.get(len(tagged), f"{len(tagged)}串一")
         ticket = make_ticket(kind, tagged, stake)
         if not ticket:
-            return []
+            # 单张不达标就跳过，不要整批清空（否则短热门二串常被误杀成空单）
+            continue
         ticket["pair"] = "".join(leg["code"] for leg in tagged)
         for leg in ticket["legs"]:
             leg["occupy_usd"] = stake * appear[leg["code"]]
@@ -797,23 +805,36 @@ def finalize_parlays(bundles: list[list[dict[str, Any]]]) -> list[dict[str, Any]
     return scale_to_daily_cap(tickets)
 
 
+def _groups_avg_min_odds(groups: list[list[dict[str, Any]]]) -> float:
+    mins = [min(float(c["odds"]) for c in g) for g in groups if g]
+    return sum(mins) / len(mins) if mins else 99.0
+
+
 def build_daily_parlays(matches: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
     groups = horizon_groups(matches, now)
     if not groups:
         return []
-    for size in (2, 3):
+    # 热门偏短时二串一常 < 1.70，优先三串一
+    sizes = (3, 2) if _groups_avg_min_odds(groups) <= 1.34 else (2, 3)
+    for size in sizes:
         bundles = _pick_disjoint_parlays(groups, size, MAX_TICKETS)
-        if len(bundles) == MAX_TICKETS:
-            return finalize_parlays(bundles)
-    for size in (2, 3):
+        tickets = finalize_parlays(bundles) if len(bundles) == MAX_TICKETS else []
+        if len(tickets) == MAX_TICKETS:
+            return tickets
+    for size in sizes:
         bundles = _pick_overlap_parlays(groups, size, MAX_TICKETS)
-        if len(bundles) == MAX_TICKETS:
-            return finalize_parlays(bundles)
+        tickets = finalize_parlays(bundles) if len(bundles) == MAX_TICKETS else []
+        if len(tickets) == MAX_TICKETS:
+            return tickets
     for need in (2, 1):
-        for size in (2, 3):
+        for size in sizes:
             bundles = _pick_disjoint_parlays(groups, size, need)
-            if len(bundles) == need:
-                return finalize_parlays(bundles)
+            tickets = finalize_parlays(bundles) if len(bundles) == need else []
+            if len(tickets) == need:
+                return tickets
+            # finalize 可能丢掉部分票；有票就发，避免整晚空单
+            if tickets:
+                return tickets
     return []
 
 

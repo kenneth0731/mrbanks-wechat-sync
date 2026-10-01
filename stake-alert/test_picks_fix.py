@@ -22,6 +22,7 @@ def test_nations_league_aliases() -> None:
     assert wanted_tournament("UEFA Nations League")
     assert wanted_tournament("欧足联国家联赛")
     assert wanted_tournament("欧足协国际联赛")
+    assert wanted_tournament("某某国联分组A")
     assert not wanted_tournament("英格兰冠军联赛")
 
 
@@ -176,6 +177,37 @@ def test_apply_verification_preserves_empty_reason() -> None:
     assert "没有关注赛事" in out["empty_reason"]
 
 
+def test_short_favorite_three_leg_not_empty() -> None:
+    """热门偏短时二串常 <1.70，应能排出三串一而不是空单。"""
+    now = datetime(2026, 10, 1, 21, 0, tzinfo=TZ)
+    start = (now + timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")
+    matches = []
+    pairs = [
+        ("德国", "塞尔维亚", 1.20),
+        ("荷兰", "希腊", 1.22),
+        ("葡萄牙", "丹麦", 1.18),
+        ("挪威", "威尔士", 1.25),
+        ("奥地利", "爱尔兰", 1.24),
+        ("以色列", "科索沃", 1.28),
+    ]
+    for i, (fav, dog, odds) in enumerate(pairs, 1):
+        matches.append(
+            {
+                "id": f"s{i}",
+                "name": f"{fav} - {dog}" if i % 2 else f"{dog} - {fav}",
+                "tournament": "欧国联",
+                "start": start,
+                "quotes": {
+                    f"1x2 (1up)|{fav}": odds,
+                    f"1x2 (1up)|{dog}": round(5.5 - odds, 2),
+                },
+            }
+        )
+    card = build_picks({"slot": "晚盘", "matches": matches}, now)
+    assert card["tickets"], card.get("empty_reason")
+    assert all(float(t["odds"]) >= 1.70 for t in card["tickets"])
+
+
 if __name__ == "__main__":
     # TZ 在 stake 里可能是固定上海时区；测试环境无 stake 时用 ZoneInfo 兜底
     assert TZ is not None or ZoneInfo("Asia/Shanghai")
@@ -186,6 +218,7 @@ if __name__ == "__main__":
         test_diagnose_zero_matches,
         test_diagnose_too_few_candidates,
         test_build_parlay_with_nations_league_quotes,
+        test_short_favorite_three_leg_not_empty,
         test_news_competition_from_tournament,
         test_apply_verification_preserves_empty_reason,
     ]

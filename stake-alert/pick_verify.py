@@ -388,6 +388,9 @@ def verify_leg(leg: dict[str, Any], history: list[dict[str, Any]]) -> dict[str, 
     verdict = "通过"
     for part in (idx, db, news):
         verdict = _worse(verdict, part["verdict"])
+    # 仅指数离开、新闻未驳回时降为存疑，避免整晚被指数波动清空
+    if verdict == "驳回" and news.get("verdict") != "驳回" and idx.get("verdict") == "驳回":
+        verdict = "存疑"
     return {
         "verdict": verdict,
         "index": idx,
