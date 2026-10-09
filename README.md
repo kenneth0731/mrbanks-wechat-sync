@@ -14,7 +14,10 @@ Agent 范围见 [`AGENTS.md`](./AGENTS.md)。
 # 任务 A：微信提醒（Mr Banks → 微信）
 
 检查 Telegram 公开频道 [@MrBanksFreeChannel](https://t.me/s/MrBanksFreeChannel)。  
-只把包含 `Use welcome code banks for weekly airdrops and bonuses` 的新消息推到微信。
+命中下面**任一**文案的新消息都会推到微信：
+
+- `Use welcome code banks for weekly airdrops and bonuses`
+- `Bet responsibly`
 
 ## 任务入口
 
