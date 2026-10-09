@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""把 Mr Banks Free Channel 里含指定文案的新消息实时推到微信。"""
+"""把 Mr Banks Free Channel 里含指定文案的新消息实时推到微信。
+
+默认触发（任一命中）：
+- Use welcome code banks for weekly airdrops and bonuses
+- Bet responsibly
+"""
 
 from __future__ import annotations
 
@@ -26,7 +31,11 @@ UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
-NEEDLE = "use welcome code banks for weekly airdrops and bonuses"
+NEEDLE_WELCOME = "use welcome code banks for weekly airdrops and bonuses"
+NEEDLE_BET_RESPONSIBLY = "bet responsibly"
+DEFAULT_NEEDLES = (NEEDLE_WELCOME, NEEDLE_BET_RESPONSIBLY)
+# 兼容旧常量名
+NEEDLE = NEEDLE_WELCOME
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -48,8 +57,29 @@ def normalize(text: str) -> str:
     return lowered.strip()
 
 
+def resolve_needles(config: dict[str, Any]) -> list[str]:
+    """配置里 filters（列表）优先；否则用单个 filter；都没有则用默认两条。"""
+    raw = config.get("filters")
+    if isinstance(raw, list):
+        needles = [str(item).strip() for item in raw if str(item).strip()]
+        if needles:
+            return needles
+    single = str(config.get("filter") or "").strip()
+    if single:
+        # 旧配置只有 welcome 文案时，自动并上 Bet responsibly
+        needles = [single]
+        if normalize(NEEDLE_BET_RESPONSIBLY) not in {normalize(n) for n in needles}:
+            needles.append(NEEDLE_BET_RESPONSIBLY)
+        return needles
+    return list(DEFAULT_NEEDLES)
+
+
 def matches(text: str, needle: str) -> bool:
     return normalize(needle) in normalize(text)
+
+
+def matched_needles(text: str, needles: list[str]) -> list[str]:
+    return [needle for needle in needles if matches(text, needle)]
 
 
 def html_to_text(raw: str) -> str:
@@ -169,11 +199,15 @@ def send_wechat(token: str, title: str, content: str) -> None:
 
 
 def format_push(item: dict[str, str]) -> tuple[str, str]:
+    reasons = item.get("matched") or ""
     title = "Mr Banks 新消息"
+    if reasons:
+        title = f"Mr Banks 新消息 · {reasons}"
     content = "\n".join(
         [
             f"时间: {format_time(item['date'])}",
             f"链接: {item['url']}",
+            f"触发: {reasons}" if reasons else "触发: （未标注）",
             "",
             item["text"],
         ]
@@ -185,8 +219,25 @@ def collect(config: dict[str, Any]) -> list[dict[str, str]]:
     channel = str(config.get("channel") or "MrBanksFreeChannel").lstrip("@")
     url = f"https://t.me/s/{channel}"
     page = fetch(url)
-    needle = str(config.get("filter") or NEEDLE)
-    return [item for item in parse_messages(page) if matches(item["text"], needle)]
+    needles = resolve_needles(config)
+    items: list[dict[str, str]] = []
+    for item in parse_messages(page):
+        hit = matched_needles(item["text"], needles)
+        if not hit:
+            continue
+        # 推送标题里用短标签，避免整句 welcome 文案过长
+        labels: list[str] = []
+        for needle in hit:
+            if normalize(needle) == normalize(NEEDLE_BET_RESPONSIBLY):
+                labels.append("Bet responsibly")
+            elif normalize(needle) == normalize(NEEDLE_WELCOME):
+                labels.append("welcome code")
+            else:
+                labels.append(needle[:40])
+        row = dict(item)
+        row["matched"] = " / ".join(labels)
+        items.append(row)
+    return items
 
 
 def run_once(

@@ -1,6 +1,9 @@
 {
   "channel": "MrBanksFreeChannel",
-  "filter": "Use welcome code banks for weekly airdrops and bonuses",
+  "filters": [
+    "Use welcome code banks for weekly airdrops and bonuses",
+    "Bet responsibly"
+  ],
   "poll_interval_seconds": 20,
   "pushplus_token": ""
 }

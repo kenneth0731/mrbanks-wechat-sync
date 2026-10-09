@@ -8,7 +8,7 @@
 
 把 Telegram 公开频道 [@MrBanksFreeChannel](https://t.me/s/MrBanksFreeChannel) 里、包含指定文案的新消息，推送到微信。
 
-- 匹配文案：`Use welcome code banks for weekly airdrops and bonuses`
+- 匹配文案（任一命中即推）：`Use welcome code banks for weekly airdrops and bonuses`；`Bet responsibly`
 - 推送通道：PushPlus → 微信
 - 云端兜底：GitHub Actions **微信提醒 · Sync Mr Banks to WeChat**（约每 5 分钟）
 - 本机可选：`sync.py` + `launchd`（`install.sh`）
