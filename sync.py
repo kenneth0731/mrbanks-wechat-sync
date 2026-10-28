@@ -200,9 +200,9 @@ def send_wechat(token: str, title: str, content: str) -> None:
 
 def format_push(item: dict[str, str]) -> tuple[str, str]:
     reasons = item.get("matched") or ""
-    title = "Mr Banks 新消息"
+    title = "【MrBanks实单分享】"
     if reasons:
-        title = f"Mr Banks 新消息 · {reasons}"
+        title = f"【MrBanks实单分享】· {reasons}"
     content = "\n".join(
         [
             f"时间: {format_time(item['date'])}",
